@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171c">
+<title>Audiobook Player</title>
+<style>
+  :root { --bg:#14171c; --panel:#1d2229; --line:#2c333d; --text:#e9edf2; --dim:#96a0ad; --accent:#f0a44b; --bad:#ef6b6b; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f3ef; --panel:#ffffff; --line:#dedad2; --text:#1e2227; --dim:#69707a; --accent:#b8650f; --bad:#b93030; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { padding-bottom: 230px; }
+  header { display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:2; }
+  header h1 { font-size:17px; margin:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  button { font:inherit; color:inherit; background:none; border:1px solid var(--line); border-radius:8px; padding:7px 12px; cursor:pointer; }
+  button:hover { border-color:var(--dim); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#14171c; font-weight:600; }
+  main { max-width:720px; margin:0 auto; padding:8px 16px; }
+  .msg { color:var(--dim); padding:24px 0; }
+  .err { color:var(--bad); padding:12px 0; white-space:pre-wrap; }
+  .album { margin:14px 0 4px; font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); display:flex; justify-content:space-between; gap:8px; }
+  ul { list-style:none; margin:0; padding:0; background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  li { display:flex; align-items:center; gap:10px; padding:12px 14px; border-top:1px solid var(--line); cursor:pointer; }
+  li:first-child { border-top:0; }
+  li:hover { background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  li.now { color:var(--accent); font-weight:600; }
+  li .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  li .meta { color:var(--dim); font-size:13px; font-weight:400; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  li .bar { position:relative; width:42px; height:4px; background:var(--line); border-radius:2px; overflow:hidden; flex:none; }
+  li .bar i { position:absolute; inset:0 auto 0 0; background:var(--accent); }
+  form { display:grid; gap:12px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-top:16px; }
+  label { display:grid; gap:4px; font-size:14px; color:var(--dim); }
+  input { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:9px 10px; width:100%; }
+  .help { font-size:14px; color:var(--dim); }
+  .help ol { padding-left:20px; margin:6px 0; }
+  a { color:var(--accent); }
+  #player { position:fixed; left:0; right:0; bottom:0; background:var(--panel); border-top:1px solid var(--line); padding:12px 16px calc(12px + env(safe-area-inset-bottom)); z-index:3; }
+  #player .in { max-width:720px; margin:0 auto; }
+  #pTitle { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #pSub { color:var(--dim); font-size:13px; min-height:1.4em; }
+  #seek { width:100%; margin:8px 0 0; accent-color:var(--accent); }
+  .times { display:flex; justify-content:space-between; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .ctl { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
+  .ctl button { min-width:52px; padding:9px 10px; }
+  #bPlay { min-width:84px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="hTitle">Audiobook Player</h1>
+  <button id="bRefresh" title="Reload the track list from GitHub" hidden>Refresh</button>
+  <button id="bSettings" hidden>Settings</button>
+</header>
+<main>
+  <div id="vSetup" hidden>
+    <form id="fSetup">
+      <label>GitHub repository (owner/name)
+        <input id="iRepo" placeholder="owner/repository" autocapitalize="off" autocomplete="off" spellcheck="false" required>
+      </label>
+      <label>Access token (leave empty for a public repository)
+        <input id="iToken" type="password" placeholder="github_pat_…" autocomplete="off">
+      </label>
+      <button class="primary" type="submit">Connect</button>
+      <div id="setupErr" class="err" hidden></div>
+      <div class="help">
+        A private repository needs a token. To make one that can only read this repository:
+        <ol>
+          <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token</a>.</li>
+          <li>Repository access: <b>Only select repositories</b>, and pick the audiobook repository.</li>
+          <li>Permissions → Repository → <b>Contents: Read-only</b>.</li>
+          <li>Generate, copy the token, and paste it above.</li>
+        </ol>
+        The token is kept only in this browser's storage and is sent only to api.github.com.
+      </div>
+    </form>
+  </div>
+  <div id="vList" hidden>
+    <div id="listMsg" class="msg" hidden></div>
+    <div id="albums"></div>
+  </div>
+</main>
+
+<div id="player" hidden>
+  <div class="in">
+    <div id="pTitle"></div>
+    <div id="pSub"></div>
+    <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Position">
+    <div class="times"><span id="tCur">0:00</span><span id="tDur">0:00</span></div>
+    <div class="ctl">
+      <button id="bPrev" title="Previous track" aria-label="Previous track">⏮</button>
+      <button id="bBack" title="Back 15 seconds">−15s</button>
+      <button id="bPlay" class="primary">Play</button>
+      <button id="bFwd" title="Forward 30 seconds">+30s</button>
+      <button id="bNext" title="Next track" aria-label="Next track">⏭</button>
+      <button id="bSpeed" title="Playback speed">1×</button>
+      <button id="bSleep" title="Stop after a set time">Sleep</button>
+    </div>
+  </div>
+</div>
+<audio id="audio" preload="auto"></audio>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const AUDIO_EXT = /\.(mp3|m4a|m4b|aac|ogg|oga|opus|wav|flac)$/i;
+const MIME = { mp3:'audio/mpeg', m4a:'audio/mp4', m4b:'audio/mp4', aac:'audio/aac', ogg:'audio/ogg', oga:'audio/ogg', opus:'audio/ogg', wav:'audio/wav', flac:'audio/flac' };
+const SPEEDS = [1, 1.15, 1.25, 1.5, 1.75, 2, 0.85];
+const SLEEPS = [0, 15, 30, 45, 60];
+
+// localStorage can throw (private windows); fall back to memory.
+const mem = {};
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('abp.' + k); return v == null ? d : JSON.parse(v); } catch { return k in mem ? mem[k] : d; } },
+  set(k, v) { mem[k] = v; try { localStorage.setItem('abp.' + k, JSON.stringify(v)); } catch {} },
+  del(k) { delete mem[k]; try { localStorage.removeItem('abp.' + k); } catch {} },
+};
+
+// Downloaded tracks are kept in IndexedDB (keyed by git blob sha) so a replay
+// needs no network. Any failure just means the track is fetched again.
+const blobs = {
+  db: null,
+  open() {
+    return this.db ||= new Promise(res => {
+      try {
+        const r = indexedDB.open('abp', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('blobs');
+        r.onsuccess = () => res(r.result);
+        r.onerror = r.onblocked = () => res(null);
+      } catch { res(null); }
+    });
+  },
+  async op(mode, fn) {
+    const db = await this.open(); if (!db) return undefined;
+    return new Promise(res => {
+      try {
+        const rq = fn(db.transaction('blobs', mode).objectStore('blobs'));
+        rq.onsuccess = () => res(rq.result); rq.onerror = () => res(undefined);
+      } catch { res(undefined); }
+    });
+  },
+  get(sha) { return this.op('readonly', s => s.get(sha)); },
+  put(sha, blob) { return this.op('readwrite', s => s.put(blob, sha)); },
+  keys() { return this.op('readonly', s => s.getAllKeys()); },
+};
+
+let cfg = store.get('cfg', null);        // { repo:'owner/name', token }
+let tracks = [];                          // flat, in play order
+let cur = -1, objUrl = null, loadSeq = 0, saved = new Set();
+let sleepIdx = 0, sleepTimer = null;
+const audio = $('audio');
+
+async function gh(path, raw) {
+  const headers = { Accept: raw ? 'application/vnd.github.raw' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  if (cfg.token) headers.Authorization = 'Bearer ' + cfg.token;
+  let r;
+  try { r = await fetch('https://api.github.com/repos/' + cfg.repo + path, { headers }); }
+  catch { throw new Error('Could not reach GitHub. Check your connection.'); }
+  if (!r.ok) {
+    const why = { 401: 'GitHub rejected the token (expired or mistyped).',
+      403: 'GitHub refused the request (token lacks access, or the rate limit was hit).',
+      404: 'Repository not found. Check the name, and that the token can read it.' }[r.status];
+    throw new Error(why || 'GitHub returned an error (' + r.status + ').');
+  }
+  return raw ? r.blob() : r.json();
+}
+
+const fmt = s => { if (!isFinite(s)) return '0:00'; s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + x : m + ':' + x; };
+const pretty = name => name.replace(AUDIO_EXT, '').replace(/[_]+/g, ' ').replace(/^(\d+)[\s.\-]+/, '$1. ').trim();
+const prettyDir = d => d ? d.split('/').filter(p => !/^(mp3|audio|tracks)$/i.test(p)).map(p => p.replace(/[-_]+/g, ' ')).join(' / ') || d : 'Top level';
+const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+const posKey = t => 'pos.' + t.sha;
+
+function show(view) {
+  $('vSetup').hidden = view !== 'setup'; $('vList').hidden = view !== 'list';
+  $('bSettings').hidden = $('bRefresh').hidden = view !== 'list';
+  if (view === 'setup') { $('iRepo').value = cfg?.repo || ''; $('iToken').value = cfg?.token || ''; }
+}
+
+async function loadLibrary() {
+  show('list');
+  $('hTitle').textContent = cfg.repo.split('/')[1];
+  $('albums').innerHTML = ''; $('listMsg').hidden = false; $('listMsg').className = 'msg'; $('listMsg').textContent = 'Loading tracks…';
+  try {
+    const repo = await gh('');
+    const tree = await gh('/git/trees/' + encodeURIComponent(repo.default_branch) + '?recursive=1');
+    tracks = tree.tree.filter(e => e.type === 'blob' && AUDIO_EXT.test(e.path)).map(e => {
+      const i = e.path.lastIndexOf('/');
+      return { path: e.path, dir: i < 0 ? '' : e.path.slice(0, i), name: e.path.slice(i + 1), sha: e.sha, size: e.size };
+    }).sort((a, b) => natural(a.dir, b.dir) || natural(a.name, b.name));
+    saved = new Set(await blobs.keys() || []);
+    if (!tracks.length) { $('listMsg').textContent = 'No audio files found in ' + cfg.repo + '.'; return; }
+    $('listMsg').hidden = true;
+    if (tree.truncated) { $('listMsg').hidden = false; $('listMsg').textContent = 'This repository is very large; some tracks may be missing from the list.'; }
+    renderList();
+    const last = store.get('last.' + cfg.repo, null);
+    const i = tracks.findIndex(t => t.sha === last);
+    if (i >= 0 && cur < 0) select(i, false);
+  } catch (e) {
+    $('listMsg').className = 'err'; $('listMsg').textContent = e.message;
+  }
+}
+
+function renderList() {
+  const root = $('albums'); root.innerHTML = '';
+  let ul = null, dir = null;
+  tracks.forEach((t, i) => {
+    if (t.dir !== dir) {
+      dir = t.dir;
+      const h = document.createElement('div'); h.className = 'album';
+      const n = tracks.filter(x => x.dir === dir).length;
+      h.innerHTML = '<span></span><span></span>'; h.children[0].textContent = prettyDir(dir); h.children[1].textContent = n + (n === 1 ? ' track' : ' tracks');
+      ul = document.createElement('ul'); root.append(h, ul);
+    }
+    const li = document.createElement('li'); li.dataset.i = i;
+    li.innerHTML = '<span class="t"></span><span class="bar" hidden><i></i></span><span class="meta"></span>';
+    li.children[0].textContent = pretty(t.name);
+    li.onclick = () => select(i, true);
+    ul.append(li);
+  });
+  tracks.forEach((_, i) => paintRow(i));
+}
+
+function paintRow(i) {
+  const li = document.querySelector('li[data-i="' + i + '"]'); if (!li) return;
+  const t = tracks[i], p = store.get(posKey(t), null);
+  li.classList.toggle('now', i === cur);
+  const bar = li.children[1];
+  if (p && p.d > 0) { bar.hidden = false; bar.firstChild.style.width = (p.done ? 100 : Math.min(100, p.t / p.d * 100)) + '%'; } else bar.hidden = true;
+  li.children[2].textContent = (p && p.done ? 'played · ' : '') + (p && p.d ? fmt(p.d) : (t.size / 1048576).toFixed(1) + ' MB') + (saved.has(t.sha) ? ' · saved' : '');
+}
+
+async function select(i, autoplay) {
+  if (i < 0 || i >= tracks.length) return;
+  savePos();
+  const prev = cur, t = tracks[i], seq = ++loadSeq;
+  cur = i; paintRow(prev); paintRow(i);
+  store.set('last.' + cfg.repo, t.sha);
+  $('player').hidden = false;
+  $('pTitle').textContent = pretty(t.name); $('pSub').textContent = 'Loading…';
+  audio.pause(); $('bPlay').textContent = 'Play';
+  try {
+    let blob = await blobs.get(t.sha);
+    if (!blob) {
+      blob = await gh('/git/blobs/' + t.sha, true);
+      blob = new Blob([blob], { type: MIME[t.name.split('.').pop().toLowerCase()] || 'audio/mpeg' });
+      await blobs.put(t.sha, blob);
+      saved = new Set(await blobs.keys() || []);
+    }
+    if (seq !== loadSeq) return;                 // another track was chosen meanwhile
+    if (objUrl) URL.revokeObjectURL(objUrl);
+    objUrl = URL.createObjectURL(blob);
+    audio.src = objUrl;
+    audio.playbackRate = store.get('speed', 1);
+    const p = store.get(posKey(t), null);
+    const resume = p && !p.done && p.t > 3 ? p.t : 0;
+    audio.addEventListener('loadedmetadata', () => { if (resume && resume < audio.duration - 2) audio.currentTime = resume; tick(); }, { once: true });
+    $('pSub').textContent = prettyDir(t.dir);
+    paintRow(i); mediaMeta(t);
+    if (autoplay) audio.play().catch(() => {});
+  } catch (e) {
+    if (seq === loadSeq) $('pSub').textContent = e.message;
+  }
+}
+
+function savePos(done) {
+  if (cur < 0 || !audio.duration || !isFinite(audio.duration)) return;
+  if (!done && audio.ended) return;            // already recorded as played
+  store.set(posKey(tracks[cur]), { t: done ? 0 : audio.currentTime, d: audio.duration, done: done || (store.get(posKey(tracks[cur]), {}).done && audio.currentTime < 3) || false });
+  paintRow(cur);
+}
+
+function tick() {
+  const d = audio.duration || 0;
+  if (!seeking) $('seek').value = d ? audio.currentTime / d * 1000 : 0;
+  $('tCur').textContent = fmt(audio.currentTime); $('tDur').textContent = fmt(d);
+}
+let seeking = false, lastSave = 0;
+audio.addEventListener('timeupdate', () => { tick(); if (Date.now() - lastSave > 5000) { lastSave = Date.now(); savePos(); } });
+audio.addEventListener('play', () => $('bPlay').textContent = 'Pause');
+audio.addEventListener('pause', () => { $('bPlay').textContent = 'Play'; savePos(); });
+audio.addEventListener('ended', () => { savePos(true); if (cur + 1 < tracks.length && tracks[cur + 1].dir === tracks[cur].dir) select(cur + 1, true); });
+audio.addEventListener('error', () => { if (audio.src) $('pSub').textContent = 'This file could not be played by the browser.'; });
+$('seek').addEventListener('input', () => { seeking = true; $('tCur').textContent = fmt($('seek').value / 1000 * (audio.duration || 0)); });
+$('seek').addEventListener('change', () => { if (audio.duration) audio.currentTime = $('seek').value / 1000 * audio.duration; seeking = false; });
+
+const skip = s => { if (audio.duration) audio.currentTime = Math.max(0, Math.min(audio.duration - 0.5, audio.currentTime + s)); };
+const toggle = () => { if (cur < 0) { if (tracks.length) select(0, true); } else audio.paused ? audio.play().catch(() => {}) : audio.pause(); };
+$('bPlay').onclick = toggle;
+$('bBack').onclick = () => skip(-15);
+$('bFwd').onclick = () => skip(30);
+$('bPrev').onclick = () => audio.currentTime > 5 ? (audio.currentTime = 0) : select(cur - 1, !audio.paused);
+$('bNext').onclick = () => select(cur + 1, !audio.paused);
+
+function paintSpeed() { const s = store.get('speed', 1); $('bSpeed').textContent = s + '×'; audio.playbackRate = s; }
+$('bSpeed').onclick = () => { const s = store.get('speed', 1); store.set('speed', SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]); paintSpeed(); };
+// Browsers reset playbackRate when a new source loads.
+audio.addEventListener('loadeddata', paintSpeed);
+
+$('bSleep').onclick = () => {
+  sleepIdx = (sleepIdx + 1) % SLEEPS.length; clearTimeout(sleepTimer);
+  const m = SLEEPS[sleepIdx];
+  $('bSleep').textContent = m ? 'Sleep ' + m + 'm' : 'Sleep';
+  if (m) sleepTimer = setTimeout(() => { audio.pause(); sleepIdx = 0; $('bSleep').textContent = 'Sleep'; }, m * 60000);
+};
+
+function mediaMeta(t) {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({ title: pretty(t.name), album: prettyDir(t.dir), artist: cfg.repo.split('/')[1] });
+  const set = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch {} };
+  set('play', () => audio.play()); set('pause', () => audio.pause());
+  set('seekbackward', () => skip(-15)); set('seekforward', () => skip(30));
+  set('previoustrack', () => $('bPrev').onclick()); set('nexttrack', () => $('bNext').onclick());
+}
+
+document.addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA/.test(e.target.tagName) && e.target.id !== 'seek') return;
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  else if (e.code === 'ArrowLeft') skip(-15);
+  else if (e.code === 'ArrowRight') skip(30);
+});
+addEventListener('pagehide', () => savePos());
+
+$('fSetup').addEventListener('submit', async e => {
+  e.preventDefault();
+  const repo = $('iRepo').value.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '').replace(/\/+$/, '');
+  const err = $('setupErr'); err.hidden = true;
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { err.hidden = false; err.textContent = 'Write the repository as owner/name.'; return; }
+  const old = cfg; cfg = { repo, token: $('iToken').value.trim() };
+  try { await gh(''); } catch (x) { cfg = old; err.hidden = false; err.textContent = x.message; return; }
+  store.set('cfg', cfg);
+  audio.pause(); audio.removeAttribute('src'); cur = -1; $('player').hidden = true;
+  loadLibrary();
+});
+$('bSettings').onclick = () => show('setup');
+$('bRefresh').onclick = loadLibrary;
+
+paintSpeed();
+cfg ? loadLibrary() : show('setup');
+</script>
+</body>
+</html>

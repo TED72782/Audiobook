@@ -23,3 +23,11 @@ Thirteen tracks, about 67 minutes. Folder: `art-of-small-talk/`
 | 10 | The Graceful Exit |
 | 11 | The Hard Cases |
 | 12 | Thirty Days of Practice |
+
+## Player
+
+`player/index.html` is a one-file audio player that reads this repository (or any
+other) straight from GitHub. Open the file in a browser, enter `owner/name` and,
+for a private repository, a read-only access token (the page explains how to make
+one). It lists every audio file by folder, remembers your place in each track,
+keeps downloaded tracks for replay, and has skip, speed and a sleep timer.
