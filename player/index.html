@@ -74,6 +74,7 @@
         <input id="iToken" type="password" placeholder="github_pat_…" autocomplete="off">
       </label>
       <button class="primary" type="submit">Connect</button>
+      <button id="bCancel" type="button" hidden>Cancel</button>
       <div id="setupErr" class="err" hidden></div>
       <div class="help">
         A private repository needs a token. To make one that can only read this repository:
@@ -196,7 +197,7 @@ function show(view) {
   $('vSetup').hidden = view !== 'setup'; $('vList').hidden = view !== 'list';
   $('bSettings').hidden = $('bRefresh').hidden = view !== 'list';
   if (view !== 'list') $('bBackLib').hidden = true;
-  if (view === 'setup') { $('iRepo').value = cfg?.repo || ''; $('iToken').value = cfg?.token || ''; }
+  if (view === 'setup') { $('iRepo').value = cfg?.repo || ''; $('iToken').value = cfg?.token || ''; $('hTitle').textContent = 'Settings'; $('setupErr').hidden = true; $('bCancel').hidden = !cfg; }
 }
 
 // A book is the folder directly under "books/" (or, without one, the top-level
@@ -414,6 +415,8 @@ $('bSettings').onclick = () => show('setup');
 $('pTitle').onclick = $('pSub').onclick = () => { if (cur >= 0 && !$('vList').hidden) openBook(tracks[cur].book); };
 $('bRefresh').onclick = loadLibrary;
 $('bBackLib').onclick = showLibrary;
+// Leave Settings without changing anything.
+$('bCancel').onclick = () => { if (!books.length) return loadLibrary(); show('list'); openKey ? openBook(openKey) : showLibrary(); };
 
 paintSpeed();
 cfg ? loadLibrary() : show('setup');
