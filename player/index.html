@@ -148,6 +148,14 @@ const blobs = {
 };
 
 let cfg = store.get('cfg', null);        // { repo:'owner/name', token }
+// No saved setup: take the repository from ?repo=owner/name, or, when served
+// from GitHub Pages (owner.github.io/name/...), from the page's own address.
+if (!cfg) {
+  const q = new URLSearchParams(location.search).get('repo');
+  const pg = /^([\w-]+)\.github\.io$/i.exec(location.hostname), seg = location.pathname.split('/')[1];
+  const guess = q || (pg && seg ? pg[1] + '/' + seg : null);
+  if (guess && /^[\w.-]+\/[\w.-]+$/.test(guess)) cfg = { repo: guess, token: '' };
+}
 let tracks = [];                          // flat, in play order
 let cur = -1, objUrl = null, loadSeq = 0, saved = new Set();
 let sleepIdx = 0, sleepTimer = null;
