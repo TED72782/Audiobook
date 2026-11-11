@@ -1,12 +1,34 @@
 # Audiobook
 
-## The Art of Small Talk: A Master Class
+A library of audiobooks, with a web player.
 
-Thirteen tracks, about 67 minutes. Folder: `art-of-small-talk/`
+**Player:** https://ted72782.github.io/Audiobook/player/
 
-- `mp3/` — the narrated tracks, numbered in listening order
-- `script/` — the text of each track
-- `synth.py` — the script that narrated them (Kokoro text-to-speech; lines starting `A:` / `B:` are example dialogue in two other voices)
+## Layout
+
+```
+books/
+  art-of-small-talk/     one folder per book
+    book.json            optional: { "title": "...", "subtitle": "...", "author": "..." }
+    mp3/                 the tracks, numbered in listening order
+    script/              the text of each track
+    synth.py             the script that narrated them
+player/
+  index.html             the player (one file)
+```
+
+## Adding a book
+
+Create a folder under `books/` and put the audio files in it, numbered so they
+sort in listening order (`01_...mp3`, `02_...mp3`). The player picks it up on
+its next Refresh. Without a `book.json` the folder name is used as the title.
+Folders inside a book (for example `part-1/`, `part-2/`) appear as headings.
+
+## Books
+
+### The Art of Small Talk: A Master Class
+
+Thirteen tracks, about 67 minutes, narrated with Kokoro text-to-speech.
 
 | # | Track |
 |---|---|
@@ -26,8 +48,8 @@ Thirteen tracks, about 67 minutes. Folder: `art-of-small-talk/`
 
 ## Player
 
-`player/index.html` is a one-file audio player that reads this repository (or any
-other) straight from GitHub. Open the file in a browser, enter `owner/name` and,
-for a private repository, a read-only access token (the page explains how to make
-one). It lists every audio file by folder, remembers your place in each track,
-keeps downloaded tracks for replay, and has skip, speed and a sleep timer.
+The player opens to a library of books; choose one to see its tracks. It
+remembers your place in each track, shows how much of each book you have
+played, keeps downloaded tracks for replay, and has skip, speed and a sleep
+timer. It reads this repository by default; Settings points it at another one
+(a private repository needs a read-only access token).

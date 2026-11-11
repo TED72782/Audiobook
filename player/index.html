@@ -46,11 +46,20 @@
   .ctl { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
   .ctl button { min-width:52px; padding:9px 10px; }
   #bPlay { min-width:84px; }
+  #library { display:grid; gap:10px; margin-top:14px; }
+  .book { display:grid; gap:3px; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; width:100%; }
+  .book.now { border-color:var(--accent); }
+  .book .bt { font-size:18px; font-weight:600; }
+  .book .bs, .book .bm { color:var(--dim); font-size:14px; }
+  .book .bar { display:block; position:relative; height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:6px; }
+  .book .bar i { position:absolute; inset:0 auto 0 0; background:var(--accent); }
+  #pTitle, #pSub { cursor:pointer; }
   [hidden] { display:none !important; }
 </style>
 </head>
 <body>
 <header>
+  <button id="bBackLib" title="Back to all books" hidden>‹ Library</button>
   <h1 id="hTitle">Audiobook Player</h1>
   <button id="bRefresh" title="Reload the track list from GitHub" hidden>Refresh</button>
   <button id="bSettings" hidden>Settings</button>
@@ -80,6 +89,7 @@
   </div>
   <div id="vList" hidden>
     <div id="listMsg" class="msg" hidden></div>
+    <div id="library"></div>
     <div id="albums"></div>
   </div>
 </main>
@@ -157,6 +167,7 @@ if (!cfg) {
   if (guess && /^[\w.-]+\/[\w.-]+$/.test(guess)) cfg = { repo: guess, token: '' };
 }
 let tracks = [];                          // flat, in play order
+let books = [], openKey = null;           // books: { key, title, subtitle, idx: [track indexes] }
 let cur = -1, objUrl = null, loadSeq = 0, saved = new Set();
 let sleepIdx = 0, sleepTimer = null;
 const audio = $('audio');
@@ -178,49 +189,101 @@ async function gh(path, raw) {
 
 const fmt = s => { if (!isFinite(s)) return '0:00'; s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + x : m + ':' + x; };
 const pretty = name => name.replace(AUDIO_EXT, '').replace(/[_]+/g, ' ').replace(/^(\d+)[\s.\-]+/, '$1. ').trim();
-const prettyDir = d => d ? d.split('/').filter(p => !/^(mp3|audio|tracks)$/i.test(p)).map(p => p.replace(/[-_]+/g, ' ')).join(' / ') || d : 'Top level';
 const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 const posKey = t => 'pos.' + t.sha;
 
 function show(view) {
   $('vSetup').hidden = view !== 'setup'; $('vList').hidden = view !== 'list';
   $('bSettings').hidden = $('bRefresh').hidden = view !== 'list';
+  if (view !== 'list') $('bBackLib').hidden = true;
   if (view === 'setup') { $('iRepo').value = cfg?.repo || ''; $('iToken').value = cfg?.token || ''; }
 }
 
+// A book is the folder directly under "books/" (or, without one, the top-level
+// folder). Folders inside a book become headings; "mp3"-style folders are ignored.
+function bookOf(path) {
+  const parts = path.split('/'); parts.pop();
+  if (/^(books|audiobooks)$/i.test(parts[0] || '') && parts.length > 1) parts.shift();
+  const key = parts[0] || '';
+  const sub = parts.slice(1).filter(p => !/^(mp3|audio|tracks)$/i.test(p)).join(' / ');
+  return { key, sub };
+}
+const words = s => s.replace(/[-_]+/g, ' ').replace(/\b[a-z]/g, c => c.toUpperCase());
+
 async function loadLibrary() {
   show('list');
-  $('hTitle').textContent = cfg.repo.split('/')[1];
-  $('albums').innerHTML = ''; $('listMsg').hidden = false; $('listMsg').className = 'msg'; $('listMsg').textContent = 'Loading tracks…';
+  $('hTitle').textContent = 'Library'; $('bBackLib').hidden = true;
+  $('albums').innerHTML = ''; $('library').innerHTML = '';
+  $('listMsg').hidden = false; $('listMsg').className = 'msg'; $('listMsg').textContent = 'Loading books…';
   try {
     const repo = await gh('');
     const tree = await gh('/git/trees/' + encodeURIComponent(repo.default_branch) + '?recursive=1');
+    const curSha = cur >= 0 ? tracks[cur].sha : null;
     tracks = tree.tree.filter(e => e.type === 'blob' && AUDIO_EXT.test(e.path)).map(e => {
-      const i = e.path.lastIndexOf('/');
-      return { path: e.path, dir: i < 0 ? '' : e.path.slice(0, i), name: e.path.slice(i + 1), sha: e.sha, size: e.size };
-    }).sort((a, b) => natural(a.dir, b.dir) || natural(a.name, b.name));
+      const i = e.path.lastIndexOf('/'), b = bookOf(e.path);
+      return { path: e.path, name: e.path.slice(i + 1), sha: e.sha, size: e.size, book: b.key, sub: b.sub };
+    }).sort((a, b) => natural(a.book, b.book) || natural(a.sub, b.sub) || natural(a.name, b.name));
+    cur = curSha ? tracks.findIndex(t => t.sha === curSha) : -1;   // a refresh can renumber tracks
     saved = new Set(await blobs.keys() || []);
     if (!tracks.length) { $('listMsg').textContent = 'No audio files found in ' + cfg.repo + '.'; return; }
+    books = [];
+    tracks.forEach((t, i) => { let b = books.at(-1); if (!b || b.key !== t.book) books.push(b = { key: t.book, title: t.book ? words(t.book) : 'Loose tracks', subtitle: '', idx: [] }); b.idx.push(i); });
+    // Optional book.json beside a book's audio gives it a proper title. Cached by
+    // content hash, so it costs one request per book only when it changes.
+    await Promise.all(tree.tree.filter(e => e.type === 'blob' && /(^|\/)book\.json$/i.test(e.path)).map(async e => {
+      const b = books.find(b => b.key && b.key === bookOf(e.path).key); if (!b) return;
+      let m = store.get('meta.' + e.sha, null);
+      if (!m) { try { m = JSON.parse(await (await gh('/git/blobs/' + e.sha, true)).text()); store.set('meta.' + e.sha, m); } catch { return; } }
+      if (m && typeof m.title === 'string' && m.title) b.title = m.title;
+      if (m && typeof m.subtitle === 'string') b.subtitle = m.subtitle;
+      if (m && typeof m.author === 'string' && m.author) b.subtitle = b.subtitle ? b.subtitle + ' · ' + m.author : m.author;
+    }));
     $('listMsg').hidden = true;
     if (tree.truncated) { $('listMsg').hidden = false; $('listMsg').textContent = 'This repository is very large; some tracks may be missing from the list.'; }
-    renderList();
     const last = store.get('last.' + cfg.repo, null);
     const i = tracks.findIndex(t => t.sha === last);
     if (i >= 0 && cur < 0) select(i, false);
+    const open = store.get('open.' + cfg.repo, null);
+    books.some(b => b.key === open) ? openBook(open) : showLibrary();
   } catch (e) {
     $('listMsg').className = 'err'; $('listMsg').textContent = e.message;
   }
 }
 
-function renderList() {
+function showLibrary() {
+  openKey = null; store.del('open.' + cfg.repo);
+  $('hTitle').textContent = 'Library'; $('bBackLib').hidden = true;
+  $('albums').innerHTML = '';
+  const root = $('library'); root.innerHTML = '';
+  for (const b of books) {
+    const ps = b.idx.map(i => store.get(posKey(tracks[i]), null));
+    const done = ps.filter(p => p && p.done).length, started = ps.some(p => p && (p.done || p.t > 3));
+    const el = document.createElement('button'); el.className = 'book' + (cur >= 0 && tracks[cur].book === b.key ? ' now' : '');
+    el.innerHTML = '<span class="bt"></span><span class="bs"></span><span class="bm"></span><span class="bar"><i></i></span>';
+    el.children[0].textContent = b.title; el.children[1].textContent = b.subtitle; el.children[1].hidden = !b.subtitle;
+    el.children[2].textContent = b.idx.length + (b.idx.length === 1 ? ' track' : ' tracks') + ' · ' +
+      (done === b.idx.length ? 'finished' : started ? done + ' of ' + b.idx.length + ' played' : 'not started');
+    el.children[3].firstChild.style.width = done / b.idx.length * 100 + '%';
+    el.onclick = () => openBook(b.key);
+    root.append(el);
+  }
+  scrollTo(0, 0);
+}
+
+function openBook(key) {
+  const b = books.find(b => b.key === key); if (!b) return showLibrary();
+  openKey = key; store.set('open.' + cfg.repo, key);
+  $('hTitle').textContent = b.title; $('bBackLib').hidden = false;
+  $('library').innerHTML = '';
   const root = $('albums'); root.innerHTML = '';
-  let ul = null, dir = null;
-  tracks.forEach((t, i) => {
-    if (t.dir !== dir) {
-      dir = t.dir;
+  let ul = null, sub = null;
+  for (const i of b.idx) {
+    const t = tracks[i];
+    if (t.sub !== sub) {
+      sub = t.sub;
       const h = document.createElement('div'); h.className = 'album';
-      const n = tracks.filter(x => x.dir === dir).length;
-      h.innerHTML = '<span></span><span></span>'; h.children[0].textContent = prettyDir(dir); h.children[1].textContent = n + (n === 1 ? ' track' : ' tracks');
+      const n = b.idx.filter(x => tracks[x].sub === sub).length;
+      h.innerHTML = '<span></span><span></span>'; h.children[0].textContent = sub ? words(sub) : (b.subtitle || 'Tracks'); h.children[1].textContent = n + (n === 1 ? ' track' : ' tracks');
       ul = document.createElement('ul'); root.append(h, ul);
     }
     const li = document.createElement('li'); li.dataset.i = i;
@@ -228,9 +291,12 @@ function renderList() {
     li.children[0].textContent = pretty(t.name);
     li.onclick = () => select(i, true);
     ul.append(li);
-  });
-  tracks.forEach((_, i) => paintRow(i));
+  }
+  b.idx.forEach(paintRow);
+  scrollTo(0, 0);
+  document.querySelector('li.now')?.scrollIntoView({ block: 'center' });
 }
+const bookTitle = t => books.find(b => b.key === t.book)?.title || '';
 
 function paintRow(i) {
   const li = document.querySelector('li[data-i="' + i + '"]'); if (!li) return;
@@ -266,7 +332,7 @@ async function select(i, autoplay) {
     const p = store.get(posKey(t), null);
     const resume = p && !p.done && p.t > 3 ? p.t : 0;
     audio.addEventListener('loadedmetadata', () => { if (resume && resume < audio.duration - 2) audio.currentTime = resume; tick(); }, { once: true });
-    $('pSub').textContent = prettyDir(t.dir);
+    $('pSub').textContent = bookTitle(t);
     paintRow(i); mediaMeta(t);
     if (autoplay) audio.play().catch(() => {});
   } catch (e) {
@@ -290,7 +356,7 @@ let seeking = false, lastSave = 0;
 audio.addEventListener('timeupdate', () => { tick(); if (Date.now() - lastSave > 5000) { lastSave = Date.now(); savePos(); } });
 audio.addEventListener('play', () => $('bPlay').textContent = 'Pause');
 audio.addEventListener('pause', () => { $('bPlay').textContent = 'Play'; savePos(); });
-audio.addEventListener('ended', () => { savePos(true); if (cur + 1 < tracks.length && tracks[cur + 1].dir === tracks[cur].dir) select(cur + 1, true); });
+audio.addEventListener('ended', () => { savePos(true); if (inBook(cur + 1)) select(cur + 1, true); else if (!openKey && !$('vList').hidden) showLibrary(); });
 audio.addEventListener('error', () => { if (audio.src) $('pSub').textContent = 'This file could not be played by the browser.'; });
 $('seek').addEventListener('input', () => { seeking = true; $('tCur').textContent = fmt($('seek').value / 1000 * (audio.duration || 0)); });
 $('seek').addEventListener('change', () => { if (audio.duration) audio.currentTime = $('seek').value / 1000 * audio.duration; seeking = false; });
@@ -300,8 +366,9 @@ const toggle = () => { if (cur < 0) { if (tracks.length) select(0, true); } else
 $('bPlay').onclick = toggle;
 $('bBack').onclick = () => skip(-15);
 $('bFwd').onclick = () => skip(30);
-$('bPrev').onclick = () => audio.currentTime > 5 ? (audio.currentTime = 0) : select(cur - 1, !audio.paused);
-$('bNext').onclick = () => select(cur + 1, !audio.paused);
+const inBook = i => i >= 0 && i < tracks.length && cur >= 0 && tracks[i].book === tracks[cur].book;
+$('bPrev').onclick = () => audio.currentTime > 5 || !inBook(cur - 1) ? (audio.currentTime = 0) : select(cur - 1, !audio.paused);
+$('bNext').onclick = () => { if (inBook(cur + 1)) select(cur + 1, !audio.paused); };
 
 function paintSpeed() { const s = store.get('speed', 1); $('bSpeed').textContent = s + '×'; audio.playbackRate = s; }
 $('bSpeed').onclick = () => { const s = store.get('speed', 1); store.set('speed', SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]); paintSpeed(); };
@@ -317,7 +384,7 @@ $('bSleep').onclick = () => {
 
 function mediaMeta(t) {
   if (!('mediaSession' in navigator)) return;
-  navigator.mediaSession.metadata = new MediaMetadata({ title: pretty(t.name), album: prettyDir(t.dir), artist: cfg.repo.split('/')[1] });
+  navigator.mediaSession.metadata = new MediaMetadata({ title: pretty(t.name), album: bookTitle(t), artist: cfg.repo.split('/')[1] });
   const set = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch {} };
   set('play', () => audio.play()); set('pause', () => audio.pause());
   set('seekbackward', () => skip(-15)); set('seekforward', () => skip(30));
@@ -344,7 +411,9 @@ $('fSetup').addEventListener('submit', async e => {
   loadLibrary();
 });
 $('bSettings').onclick = () => show('setup');
+$('pTitle').onclick = $('pSub').onclick = () => { if (cur >= 0 && !$('vList').hidden) openBook(tracks[cur].book); };
 $('bRefresh').onclick = loadLibrary;
+$('bBackLib').onclick = showLibrary;
 
 paintSpeed();
 cfg ? loadLibrary() : show('setup');
