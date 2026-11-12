@@ -308,41 +308,81 @@ function paintRow(i) {
   li.children[2].textContent = (p && p.done ? 'played · ' : '') + (p && p.d ? fmt(p.d) : (t.size / 1048576).toFixed(1) + ' MB') + (saved.has(t.sha) ? ' · saved' : '');
 }
 
+async function getBlob(t) {
+  let blob = await blobs.get(t.sha);
+  if (!blob) {
+    blob = await gh('/git/blobs/' + t.sha, true);
+    blob = new Blob([blob], { type: MIME[t.name.split('.').pop().toLowerCase()] || 'audio/mpeg' });
+    await blobs.put(t.sha, blob);
+    saved = new Set(await blobs.keys() || []);
+  }
+  return blob;
+}
+
+// Everything here is synchronous on purpose: a locked phone only lets the page
+// start the next track if it happens inside the "ended" event itself, with no
+// waiting on storage or the network in between. So the next track's audio is
+// fetched ahead of time (prepareNext) and handed over here ready to play.
+function startTrack(i, url, autoplay) {
+  const prev = cur, t = tracks[i];
+  cur = i; ++loadSeq; loading = pendingPlay = false;
+  const old = objUrl; objUrl = url;
+  audio.src = url;
+  audio.playbackRate = store.get('speed', 1);
+  if (autoplay) audio.play().catch(() => {});
+  $('bPlay').textContent = autoplay ? 'Pause' : 'Play';
+  if (old && old !== url) URL.revokeObjectURL(old);
+  const p = store.get(posKey(t), null);
+  const resume = p && !p.done && p.t > 3 ? p.t : 0;
+  audio.addEventListener('loadedmetadata', () => { if (resume && resume < audio.duration - 2) audio.currentTime = resume; tick(); }, { once: true });
+  store.set('last.' + cfg.repo, t.sha);
+  $('player').hidden = false;
+  $('pTitle').textContent = pretty(t.name); $('pSub').textContent = bookTitle(t);
+  paintRow(prev); paintRow(i); mediaMeta(t);
+  prepareNext();
+}
+
+let ready = null;                         // { sha, url } for the track after the current one
+let loading = false, pendingPlay = false, preparing = null;
+async function prepareNext() {
+  const n = cur + 1;
+  if (!inBook(n)) return;
+  const t = tracks[n];
+  if ((ready && ready.sha === t.sha) || preparing === t.sha) return;
+  preparing = t.sha;
+  try {
+    const blob = await getBlob(t);
+    if (cur + 1 !== n || tracks[n] !== t) return;      // the listener moved on meanwhile
+    if (ready && ready.url !== objUrl) URL.revokeObjectURL(ready.url);
+    ready = { sha: t.sha, url: URL.createObjectURL(blob) };
+    paintRow(n);
+  } catch {}                              // not fatal: the slower path below still works
+  finally { if (preparing === t.sha) preparing = null; }
+}
+
 async function select(i, autoplay) {
   if (i < 0 || i >= tracks.length) return;
   savePos();
-  const prev = cur, t = tracks[i], seq = ++loadSeq;
+  const t = tracks[i];
+  if (ready && ready.sha === t.sha) return startTrack(i, ready.url, autoplay);
+  audio.pause();
+  loading = true; pendingPlay = autoplay;     // until startTrack: the audio element still holds the old track
+  const prev = cur, seq = ++loadSeq;
   cur = i; paintRow(prev); paintRow(i);
-  store.set('last.' + cfg.repo, t.sha);
   $('player').hidden = false;
   $('pTitle').textContent = pretty(t.name); $('pSub').textContent = 'Loading…';
-  audio.pause(); $('bPlay').textContent = 'Play';
+  $('bPlay').textContent = autoplay ? 'Pause' : 'Play';
   try {
-    let blob = await blobs.get(t.sha);
-    if (!blob) {
-      blob = await gh('/git/blobs/' + t.sha, true);
-      blob = new Blob([blob], { type: MIME[t.name.split('.').pop().toLowerCase()] || 'audio/mpeg' });
-      await blobs.put(t.sha, blob);
-      saved = new Set(await blobs.keys() || []);
-    }
+    const blob = await getBlob(t);
     if (seq !== loadSeq) return;                 // another track was chosen meanwhile
-    if (objUrl) URL.revokeObjectURL(objUrl);
-    objUrl = URL.createObjectURL(blob);
-    audio.src = objUrl;
-    audio.playbackRate = store.get('speed', 1);
-    const p = store.get(posKey(t), null);
-    const resume = p && !p.done && p.t > 3 ? p.t : 0;
-    audio.addEventListener('loadedmetadata', () => { if (resume && resume < audio.duration - 2) audio.currentTime = resume; tick(); }, { once: true });
-    $('pSub').textContent = bookTitle(t);
-    paintRow(i); mediaMeta(t);
-    if (autoplay) audio.play().catch(() => {});
+    startTrack(i, URL.createObjectURL(blob), pendingPlay);
   } catch (e) {
-    if (seq === loadSeq) $('pSub').textContent = e.message;
+    if (seq === loadSeq) { loading = pendingPlay = false; $('pSub').textContent = e.message; }
   }
 }
 
 function savePos(done) {
-  if (cur < 0 || !audio.duration || !isFinite(audio.duration)) return;
+  if (loading || cur < 0 || !audio.duration || !isFinite(audio.duration)) return;
   if (!done && audio.ended) return;            // already recorded as played
   store.set(posKey(tracks[cur]), { t: done ? 0 : audio.currentTime, d: audio.duration, done: done || (store.get(posKey(tracks[cur]), {}).done && audio.currentTime < 3) || false });
   paintRow(cur);
@@ -356,20 +396,28 @@ function tick() {
 let seeking = false, lastSave = 0;
 audio.addEventListener('timeupdate', () => { tick(); if (Date.now() - lastSave > 5000) { lastSave = Date.now(); savePos(); } });
 audio.addEventListener('play', () => $('bPlay').textContent = 'Pause');
-audio.addEventListener('pause', () => { $('bPlay').textContent = 'Play'; savePos(); });
-audio.addEventListener('ended', () => { savePos(true); if (inBook(cur + 1)) select(cur + 1, true); else if (!openKey && !$('vList').hidden) showLibrary(); });
+audio.addEventListener('pause', () => { if (loading) return; $('bPlay').textContent = 'Play'; savePos(); });
+audio.addEventListener('ended', () => {
+  savePos(true);
+  const n = cur + 1;
+  if (!inBook(n)) { if (!openKey && !$('vList').hidden) showLibrary(); return; }
+  ready && ready.sha === tracks[n].sha ? startTrack(n, ready.url, true) : select(n, true);
+});
+// A phone can drop the prepared track if the download was cut off; retry while audio is still playing.
+audio.addEventListener('timeupdate', () => { if (audio.duration - audio.currentTime < 60 && !(ready && inBook(cur + 1) && ready.sha === tracks[cur + 1].sha)) prepareNextOnce(); });
+let prepAt = 0; const prepareNextOnce = () => { if (Date.now() - prepAt > 15000) { prepAt = Date.now(); prepareNext(); } };
 audio.addEventListener('error', () => { if (audio.src) $('pSub').textContent = 'This file could not be played by the browser.'; });
 $('seek').addEventListener('input', () => { seeking = true; $('tCur').textContent = fmt($('seek').value / 1000 * (audio.duration || 0)); });
 $('seek').addEventListener('change', () => { if (audio.duration) audio.currentTime = $('seek').value / 1000 * audio.duration; seeking = false; });
 
 const skip = s => { if (audio.duration) audio.currentTime = Math.max(0, Math.min(audio.duration - 0.5, audio.currentTime + s)); };
-const toggle = () => { if (cur < 0) { if (tracks.length) select(0, true); } else audio.paused ? audio.play().catch(() => {}) : audio.pause(); };
+const toggle = () => { if (loading) { pendingPlay = !pendingPlay; $('bPlay').textContent = pendingPlay ? 'Pause' : 'Play'; } else if (cur < 0) { if (tracks.length) select(0, true); } else audio.paused ? audio.play().catch(() => {}) : audio.pause(); };
 $('bPlay').onclick = toggle;
 $('bBack').onclick = () => skip(-15);
 $('bFwd').onclick = () => skip(30);
 const inBook = i => i >= 0 && i < tracks.length && cur >= 0 && tracks[i].book === tracks[cur].book;
-$('bPrev').onclick = () => audio.currentTime > 5 || !inBook(cur - 1) ? (audio.currentTime = 0) : select(cur - 1, !audio.paused);
-$('bNext').onclick = () => { if (inBook(cur + 1)) select(cur + 1, !audio.paused); };
+$('bPrev').onclick = () => (!loading && audio.currentTime > 5) || !inBook(cur - 1) ? (audio.currentTime = 0) : select(cur - 1, !audio.paused || pendingPlay);
+$('bNext').onclick = () => { if (inBook(cur + 1)) select(cur + 1, !audio.paused || pendingPlay); };
 
 function paintSpeed() { const s = store.get('speed', 1); $('bSpeed').textContent = s + '×'; audio.playbackRate = s; }
 $('bSpeed').onclick = () => { const s = store.get('speed', 1); store.set('speed', SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]); paintSpeed(); };
