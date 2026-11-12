@@ -12,7 +12,7 @@ books/
     book.json            optional: { "title": "...", "subtitle": "...", "author": "..." }
     mp3/                 the tracks, numbered in listening order
     script/              the text of each track
-    synth.py             the script that narrated them
+    synth.py / make.py   the script that built the audio
 player/
   index.html             the player (one file)
 ```
@@ -45,6 +45,13 @@ Thirteen tracks, about 67 minutes, narrated with Kokoro text-to-speech.
 | 10 | The Graceful Exit |
 | 11 | The Hard Cases |
 | 12 | Thirty Days of Practice |
+
+### Mira and the Moonlight Duel
+
+A five-minute lightsaber story for young listeners: an original fan story with
+new characters, in four voices. Every sound effect (saber hum, ignition, swings,
+clashes, droid beeps, wind, footsteps) is synthesized from sine waves and noise
+by `make.py`; no recorded samples are used.
 
 ## Player
 

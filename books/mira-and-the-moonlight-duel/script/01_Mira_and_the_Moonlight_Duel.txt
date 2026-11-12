@@ -1,0 +1,91 @@
+[sfx:chime]
+N: Mira and the Moonlight Duel.
+[pause:0.6]
+N: Far out among the stars, on a small green moon called Tahlo, there stood an old stone temple. And in that temple lived a young Jedi learner named Mira.
+N: Mira was nine years old. She had a patched brown cloak, a bright blue lightsaber, and a best friend: a round little droid called Pip.
+[sfx:beep_happy]
+N: All that afternoon, Mira had practiced. Pip tossed little training balls into the air, and Mira batted them away with her humming blade.
+[sfx:ignite]
+[sfx:swing]
+[sfx:swing]
+N: Well. Most of them. One bounced right off her nose.
+[sfx:bonk]
+[sfx:beep_giggle]
+[sfx:retract]
+M: Very funny, Pip.
+N: In the very middle of the temple, on a pillar of white stone, sat the star crystal. It glowed softly, like a tiny star that had come down to rest. It was the most precious thing on the whole moon.
+N: Every evening, Mira's teacher, Master Oren, gave her the same job.
+G: Guard the star crystal, Mira. And remember. A Jedi's greatest power is not her lightsaber. It is her calm.
+N: Mira always nodded. But secretly, she thought the lightsaber was the best part.
+[pause:0.5]
+N: One night, when the sky was full of stars, a cold wind began to whistle through the temple halls.
+[bg:wind]
+[pause:1.8]
+[sfx:beep_worried]
+M: What is it, Pip?
+N: Then she heard it. Footsteps. Slow, heavy footsteps.
+[sfx:footsteps]
+N: Out of the shadows stepped a tall figure, in a dark hood and a silver mask.
+V: I have come for the crystal, little one. Step aside.
+N: Mira's heart went thump, thump, thump. But she planted her feet.
+M: No. I am the guardian of this crystal. And I am not moving.
+N: The stranger reached under the dark cloak, and out came a lightsaber, glowing purple.
+[sfx:ignite_low]
+N: Mira took a deep breath, and switched on her own.
+[bg:off]
+[sfx:ignite]
+[bg:hum]
+N: The blue blade hummed in the dark. And the stranger leaped!
+[sfx:swing]
+[sfx:clash]
+N: Mira blocked. The blades crackled, and flashed like lightning.
+[sfx:swing]
+[sfx:clash]
+[sfx:swing_low]
+[sfx:clash]
+N: Then the stranger raised one hand. And a heavy stone bench lifted into the air, all by itself, and came flying toward her!
+[sfx:force]
+N: Mira dived, and rolled.
+[sfx:crash]
+N: The bench smashed into the wall behind her, and dust came drifting down.
+N: Mira jumped up onto the temple steps. The stranger followed. Up and up they went, blades swinging, sparks raining down like fireflies.
+[sfx:swing]
+[sfx:clash]
+[sfx:clash]
+N: Pip rolled behind a pillar, and peeked out with one round eye.
+[sfx:beep_worried]
+N: The stranger was strong. Swing after swing pushed Mira back, back, back across the stone floor, until her heel bumped the wall.
+[sfx:clash_long]
+M: Pip! I can't win! He's too strong!
+N: Pip whistled three little notes.
+[sfx:beep_tune]
+N: It was the tune Master Oren always hummed. And Mira remembered. Not her lightsaber. Her calm.
+[bg:hum_soft]
+N: So Mira closed her eyes. She breathed in. And out. The fear grew quiet. And in the quiet, she could feel everything. The wind. The stones. And the stranger's next step, before it even came.
+[sfx:swing_low]
+N: Whoosh! She ducked.
+[sfx:swing_low]
+N: Whoosh! She spun away.
+[bg:hum]
+N: The stranger swung too hard, stumbled, and
+[sfx:swing]
+[sfx:clash]
+[sfx:clatter]
+N: the purple lightsaber flew out of his hand, and went skittering across the floor. Pip zoomed over and sat on it.
+[sfx:beep_proud]
+N: Mira pointed her glowing blade at the stranger. Then she did something surprising. She switched it off.
+[bg:off]
+[sfx:retract]
+M: You have lost. But I will not hurt you. A Jedi protects. Go in peace.
+N: For a moment, nobody moved. Then the stranger began to laugh. A warm, friendly laugh that Mira knew very well. And off came the silver mask.
+M: Master Oren!
+G: Well done, Mira. That was your guardian's test. You did not win with your lightsaber. You won when you found your calm. And you won again when you chose to be kind.
+N: Mira grinned so wide her cheeks hurt. And Pip spun in happy circles.
+[sfx:beep_happy]
+M: Master? Can we do it again tomorrow?
+G: Tomorrow, young one, you get to wear the mask.
+[pause:0.4]
+N: And high above the little green moon, the stars twinkled, as if they were laughing too.
+[pause:0.5]
+N: The end.
+[sfx:chime_end]
