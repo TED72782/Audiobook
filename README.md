@@ -46,6 +46,26 @@ Thirteen tracks, about 67 minutes, narrated with Kokoro text-to-speech.
 | 11 | The Hard Cases |
 | 12 | Thirty Days of Practice |
 
+### Speak Like a Leader: A Master Class in Leadership Communication
+
+Thirteen tracks, about 70 minutes, narrated with Kokoro text-to-speech.
+
+| # | Track |
+|---|---|
+| 0 | Welcome |
+| 1 | What Your Words Are For |
+| 2 | Presence: Calm Before Words |
+| 3 | Clarity: Say the Point First |
+| 4 | Listening Like a Leader |
+| 5 | Telling the Story |
+| 6 | Feedback That Helps |
+| 7 | Hard Conversations |
+| 8 | Meetings, and Speaking to a Room |
+| 9 | Leading Through Change and Uncertainty |
+| 10 | Influence Without Authority |
+| 11 | Writing Like a Leader |
+| 12 | Thirty Days of Practice |
+
 ## Player
 
 The player opens to a library of books; choose one to see its tracks. It
