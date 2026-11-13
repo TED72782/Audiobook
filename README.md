@@ -48,7 +48,7 @@ Thirteen tracks, about 67 minutes, narrated with Kokoro text-to-speech.
 
 ### Speak Like a Leader: A Master Class in Leadership Communication
 
-Thirteen tracks, about 70 minutes, narrated with Kokoro text-to-speech.
+Thirteen tracks, about 64 minutes, narrated with Kokoro text-to-speech.
 
 | # | Track |
 |---|---|
